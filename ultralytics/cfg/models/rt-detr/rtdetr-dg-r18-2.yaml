@@ -1,0 +1,51 @@
+# Ultralytics YOLO 🚀, AGPL-3.0 license
+# RT-DETR-l object detection model with P3-P5 outputs. For details see https://docs.ultralytics.com/models/rtdetr
+
+# Parameters
+nc: 1  # number of classes
+scales: # model compound scaling constants, i.e. 'model=yolov8n-cls.yaml' will call yolov8-cls.yaml with scale 'n'
+  # [depth, width, max_channels]
+  l: [1.00, 1.00, 1024]
+
+backbone:
+  # [from, repeats, module, args]
+  - [-1, 1, ConvNormLayer, [32, 3, 2, None, False, 'relu']] # 0-P1/2  (32*128*128)
+  - [-1, 1, ConvNormLayer, [32, 3, 1, None, False, 'relu']] # 1  (32*128*128)
+  - [-1, 1, ConvNormLayer, [64, 3, 1, None, False, 'relu']] # 2  (64, 128, 128)
+  - [-1, 1, nn.MaxPool2d, [3, 2, 1]] # 3-P2/4  (64, 64, 64)
+  
+  # [ch_out, block_type, block_nums, stage_num, act, variant]
+  - [-1, 1, Blocks, [64, BasicBlock, 2, 2, 'relu']] # 4 (64, 64, 64)
+  - [-1, 1, Blocks, [128, BasicBlock, 2, 3, 'relu']] # 5-P3/8  (128, 32, 32)
+  - [-1, 1, Blocks, [256, BasicBlock, 2, 4, 'relu']] # 6-P4/16 (256, 16, 16)
+  - [-1, 1, Blocks, [512, BasicBlock, 2, 5, 'relu']] # 7-P5/32 (512, 8, 8)
+
+head:
+  # Domain classifier branch
+  - [7, 1, DomainClassifier, [1024, 2]]  
+
+  # Original detection branch
+  - [7, 1, Conv, [256, 1, 1, None, 1, 1, False]]  # 9 input_proj.2 (256, 8, 8)
+  - [-1, 1, AIFI, [1024, 8]] # 10  (256,8,8)
+  - [-1, 1, Conv, [256, 1, 1]]  # 11, Y5, lateral_convs.0 (256, 8, 8)
+
+  - [-1, 1, nn.Upsample, [None, 2, 'nearest']] # 12 (256, 16, 16) 从head开始到这里，是P5经历AIFI模块后经历卷积及上采样把通道数和大小与P4对齐的操作。
+  - [6, 1, Conv, [256, 1, 1, None, 1, 1, False]]  # 13 input_proj.1 (256,16,16)S4的输出
+  - [[-2, -1], 1, Concat, [1]] # 14 catP4和P5 (512,16,16)
+  - [-1, 3, RepC3, [256, 0.5]]  # 15, fpn_blocks.0  (256, 16, 16)多尺度特征融合
+  - [-1, 1, Conv, [256, 1, 1]]   # 16, Y4, lateral_convs.1   (256, 16, 16)
+
+  - [-1, 1, nn.Upsample, [None, 2, 'nearest']] # 17 (256, 32, 32)
+  - [5, 1, Conv, [256, 1, 1, None, 1, 1, False]]  # 18 input_proj.0 (256, 32, 32)第五层输出，P3对齐通道
+  - [[-2, -1], 1, Concat, [1]]  # 19 cat backbone P4 （512，32，32）拼接P3和上一步拼接的P45
+  - [-1, 3, RepC3, [256, 0.5]]    # X3 (20, fpn_blocks.1 （256，32，32）多尺度特征融合
+
+  - [-1, 1, Conv, [256, 3, 2]]   # 21, downsample_convs.0   (256, 16, 16)下采样
+  - [[-1, 16], 1, Concat, [1]]  # 22 cat Y4 拼接P345下采样之后和原本15层输出（也就是拼接P45后多尺度融合后的特征） （512，16，16）
+  - [-1, 3, RepC3, [256, 0.5]]    # F4 (23), pan_blocks.0  多尺度特征融合（256，16，16）
+
+  - [-1, 1, Conv, [256, 3, 2]]   # 24, downsample_convs.1 下采样（256，8，8）
+  - [[-1, 11], 1, Concat, [1]]  # 25 cat Y5 拼接第10步输出，原始P5，（512，8，8）
+  - [-1, 3, RepC3, [256, 0.5]]    # F5 (26), pan_blocks.1 多尺度融合（256，8，8）
+
+  - [[20, 23, 26], 1, RTDETRDecoder, [nc, 256, 300, 4, 8, 3]]  # Detect(P3, P4, P5)

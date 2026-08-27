@@ -1,0 +1,30 @@
+# RT-DETR ResNet101 with IterNorm (Iterative Normalization)
+# Iterative Normalization: Beyond Standardization towards Efficient Whitening (CVPR 2019)
+
+# Parameters
+nc: 80 # number of classes
+scales: # model compound scaling constants, i.e. 'model=yolov8n.yaml' will call yolov8.yaml with scale 'n'
+  # [depth, width, max_channels]
+  n: [0.33, 0.25, 1024]
+  s: [0.33, 0.50, 1024]
+  m: [0.67, 0.75, 768]
+  l: [1.00, 1.00, 512]
+  x: [1.00, 1.25, 512]
+
+# RT-DETR ResNet101 backbone with IterNorm
+backbone:
+  # [from, repeats, module, args]
+  - [-1, 1, ConvNormLayer, [64, 7, 2, 3, False, 'relu']] # 0-P1/2
+  - [-1, 1, MaxPool2d, [3, 2, 1]] # 1-P2/4
+  
+  # [ch_out, block_type, block_nums, stage_num, act, variant]
+  - [-1, 1, Blocks, [64, BottleNeck, 3, 2, 'relu']] # 2 - 原始BottleNeck
+  - [-1, 1, Blocks, [128, BottleNeck_IterNorm, 4, 3, 'relu']] # 3-P3/8 - 使用IterNorm
+  - [-1, 1, Blocks, [256, BottleNeck_IterNorm, 23, 4, 'relu']] # 4-P4/16 - 使用IterNorm
+  - [-1, 1, Blocks, [512, BottleNeck_IterNorm, 3, 5, 'relu']] # 5-P5/32 - 使用IterNorm
+
+# RT-DETR head
+head:
+  - [-1, 1, HybridEncoder, [256, 1024]] # 6
+  - [[3, 4, 5], 1, RTDETRDecoder, [256, 80, 4, 8, 3]] # 7 Detect(P3, P4, P5)
+
