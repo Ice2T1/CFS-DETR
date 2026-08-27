@@ -1,64 +1,42 @@
 # CFS-DETR
 
-Official implementation of **CFS-DETR: Cross-Scale Invariant Feature Learning for Fiber Ultrastructure Detection**.
+Official implementation of **CFS-DETR: Cross-Scale Invariant Feature Learning
+for Fiber Ultrastructure Detection**.
 
-CFS-DETR is developed for cross-scale agglomeration detection in scanning electron microscopy (SEM) images. It contains:
-
-- **FSE-Net**, including the Fiber SEM Edge Enhancer (FSEE), Universal Edge Enhancer (UEE), and Edge Selection Module (ESM).
-- **CIM**, which uses a gradient reversal layer and a scale-domain classifier to learn cross-scale invariant features.
-
-Only the code required for CFS-DETR is included here. The underlying detector is provided by Ultralytics and is not duplicated in this repository.
-
-## Requirements
-
-The code is based on **Ultralytics 8.0.201**. Install a PyTorch build compatible with your CUDA driver, then install the remaining dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-`requirements.txt` contains only the direct runtime dependencies: PyTorch, TorchVision, NumPy, OpenCV, and PyYAML.
+This release is based directly on the Ultralytics 8.0.201 source tree used for
+the experiments. It includes the complete forward-propagation, scale-domain
+label, gradient-reversal, domain-loss, FSE-Net, and RT-DETR training paths.
 
 ## Installation
 
-Clone this repository and the official Ultralytics repository:
+Use Python 3.8 and install a PyTorch build compatible with the local CUDA
+driver. Then run:
 
 ```bash
-git clone https://github.com/Ice2T1/CFS-DETR.git
-git clone --branch v8.0.201 https://github.com/ultralytics/ultralytics.git ultralytics-8.0.201
-```
-
-Apply the CFS-DETR integration patch and install Ultralytics in editable mode:
-
-```bash
-cd ultralytics-8.0.201
-git apply ../CFS-DETR/patches/ultralytics-8.0.201-cfs-detr.patch
+pip install -r requirements.txt
 pip install -e .
-cd ../CFS-DETR
 ```
 
-## Dataset format
+The CUDA implementation bundled at
+`ultralytics/nn/extra_modules/ops_dcnv3/dist/` was built for Linux and Python
+3.8. Install it only if the local environment reports that DCNv3 is missing.
 
-The dataset follows the Ultralytics YOLO detection format:
+## Dataset
+
+The dataset must use the Ultralytics YOLO detection layout:
 
 ```text
 dataset/
-├── images/
-│   ├── train/
-│   ├── val/
-│   └── test/
-└── labels/
-    ├── train/
-    ├── val/
-    └── test/
+├── images/{train,val,test}/
+└── labels/{train,val,test}/
 ```
 
-Edit `data_example.yaml` to point to the dataset. Scale-domain labels are inferred from image filenames:
+Edit `data_example.yaml` before training. Scale-domain labels are generated
+from image filenames: names containing `nm` are assigned to domain 0; names
+containing `μm` or `#U03bcm` are assigned to domain 1.
 
-- filenames containing `nm` are assigned to the nm-scale domain (domain 0);
-- filenames containing `#U03bcm` or `μm` are assigned to the micrometer-scale domain (domain 1).
-
-The DHU-OD-696 dataset is associated with an ongoing research project and is not publicly released at this stage.
+The DHU-OD-696 dataset is associated with an ongoing research project and is
+not publicly released at this stage.
 
 ## Training
 
@@ -78,14 +56,17 @@ python train.py --data /path/to/data.yaml --device 0,1,2,3 --epochs 150 --batch 
 python val.py --weights /path/to/best.pt --data /path/to/data.yaml --device 0
 ```
 
-## Core files
+## Main implementation locations
 
-- `cfs_detr/fse_net.py`: FSE-Net, FSEE, UEE, and ESM.
-- `cfs_detr/cim.py`: CIM, gradient reversal, and domain classification.
-- `cfs_detr/domain.py`: nm/μm scale-domain labels.
-- `configs/cfs_detr.yaml`: CFS-DETR architecture.
-- `patches/ultralytics-8.0.201-cfs-detr.patch`: connection to RT-DETR training, loss, and forward propagation.
+- `ultralytics/cfg/models/rt-detr/cfs-detr.yaml`: model configuration.
+- `ultralytics/nn/extra_modules/domain_classifier.py`: Cross-Scale Invariant Module (CIM) and gradient reversal.
+- `ultralytics/nn/extra_modules/block.py`: Fiber SEM Edge Enhancement Network (FSE-Net), Fiber SEM Edge Enhancer (FSEE), and Universal Edge Enhancer (UEE).
+- `ultralytics/nn/extra_modules/attention.py`: Edge Selection Module (ESM).
+- `ultralytics/nn/tasks.py`: CFS-DETR forward path and joint detection/domain loss routing.
+- `ultralytics/data/dataset.py`: scale-domain label generation and batching.
+- `ultralytics/models/utils/loss.py`: domain-adversarial loss.
 
 ## License
 
-The implementation is built on Ultralytics 8.0.201 and follows its AGPL-3.0 license.
+This implementation is based on Ultralytics 8.0.201 and follows the AGPL-3.0
+license.
